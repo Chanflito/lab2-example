@@ -1,0 +1,107 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Generate Prisma Client
+      run: npx prisma generate
+
+    - name: Run tests
+      run: npm run test
+
+    - name: Build application
+      run: npm run build
+
+    - name: Create deployment package
+      run: |
+        tar -czf deploy.tar.gz \
+          --exclude=node_modules \
+          --exclude=.git \
+          --exclude=coverage \
+          --exclude=.env \
+          .
+
+    - name: Deploy to VM
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USER }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        port: 22
+        script: |
+          # Navigate to project directory
+          cd ~/tradepal
+          
+          # Backup current version
+          if [ -d "backup" ]; then rm -rf backup; fi
+          if [ -d "current" ]; then mv current backup; fi
+          mkdir -p current
+          
+          # Download and extract new version
+          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+               -L "${{ github.api_url }}/repos/${{ github.repository }}/tarball/${{ github.sha }}" \
+               -o latest.tar.gz
+          
+          tar -xzf latest.tar.gz -C current --strip-components=1
+          rm latest.tar.gz
+          
+          # Copy environment file
+          cp .env current/.env
+          
+          # Build new Docker image
+          cd current
+          docker build -t tradepal-api:latest .
+          
+          # Stop current containers
+          docker-compose -f docker-compose.prod.yml down
+          
+          # Start new containers
+          docker-compose -f docker-compose.prod.yml up -d
+          
+          # Wait for health check
+          sleep 30
+          
+          # Wait for containers to be ready
+          echo "Waiting for containers to start..."
+          sleep 30
+          
+          # Check if deployment was successful
+          if docker-compose -f docker-compose.prod.yml ps | grep -q "Up"; then
+            echo "Deployment successful"
+            # Test API endpoint
+            if curl -f http://localhost:8080 > /dev/null 2>&1; then
+              echo "API is responding correctly"
+              # Clean up old images
+              docker image prune -f
+            else
+              echo "API not responding, checking logs..."
+              docker-compose -f docker-compose.prod.yml logs api
+            fi
+          else
+            echo "Deployment failed, rolling back"
+            docker-compose -f docker-compose.prod.yml down
+            cd ../backup
+            docker build -t tradepal-api:latest .
+            docker-compose -f docker-compose.prod.yml up -d
+            exit 1
+          fi
