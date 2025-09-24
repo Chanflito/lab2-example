@@ -117,6 +117,82 @@ export class UserStorageService {
     }
   }
 
+  async generateUploadPresignedUrl(userId: string): Promise<{ uploadUrl: string; fileName: string }> {
+    // Check if user exists
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: { id: true, imageUrl: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Generate unique filename
+    const fileName = `avatars/${userId}-${randomUUID()}.jpg`;
+
+    try {
+      // Generate SAS token for upload
+      const sharedKeyCredential = new StorageSharedKeyCredential(this.accountName, this.accountKey);
+
+      const sasOptions = {
+        containerName: this.containerName,
+        blobName: fileName,
+        permissions: BlobSASPermissions.parse('cw'), // create + write permissions
+        startsOn: new Date(),
+        expiresOn: new Date(new Date().valueOf() + 900 * 1000), // 15 minutes from now
+      };
+
+      const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
+      const uploadUrl = `https://${this.accountName}.blob.core.windows.net/${this.containerName}/${fileName}?${sasToken}`;
+
+      return { uploadUrl, fileName };
+    } catch (error) {
+      throw new BadRequestException(`Failed to generate upload URL: ${error.message}`);
+    }
+  }
+
+  async confirmUpload(userId: string, fileName: string): Promise<string> {
+    // Check if user exists
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+      select: { id: true, imageUrl: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    try {
+      // Verify the blob exists
+      const containerClient = this.blobServiceClient.getContainerClient(this.containerName);
+      const blobClient = containerClient.getBlockBlobClient(fileName);
+
+      const exists = await blobClient.exists();
+      if (!exists) {
+        throw new BadRequestException('File was not uploaded successfully');
+      }
+
+      // Delete previous avatar if exists
+      if (user.imageUrl) {
+        await this.deleteBlobIfExists(user.imageUrl);
+      }
+
+      // Get the blob URL
+      const blobUrl = blobClient.url;
+
+      // Update user's imageUrl in database
+      await this.prismaService.user.update({
+        where: { id: userId },
+        data: { imageUrl: blobUrl },
+      });
+
+      return blobUrl;
+    } catch (error) {
+      throw new BadRequestException(`Failed to confirm upload: ${error.message}`);
+    }
+  }
+
   async getPresignedUrl(userId: string): Promise<string> {
     // Get user and their current image URL
     const user = await this.prismaService.user.findUnique({

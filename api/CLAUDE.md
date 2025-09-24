@@ -74,14 +74,24 @@ The `start:prod` script handles the full production startup sequence:
 The application includes a comprehensive image storage system using Azure Blob Storage for user avatars:
 
 - **UserStorageModule**: Scalable module for image upload and management
+- **Direct Upload Support**: Frontend can upload directly to Azure using presigned URLs (recommended)
+- **Traditional Backend Upload**: Files can still be uploaded through the backend
 - **Automatic image replacement**: New uploads automatically replace previous user images
-- **Presigned URLs**: Secure temporary URLs for private image access (1-hour expiration)
-- **File validation**: Supports JPEG, PNG, WebP with 5MB size limit
+- **Presigned URLs**: Secure temporary URLs for both upload (15min) and access (1-hour expiration)
+- **File validation**: Supports JPEG, PNG, WebP with 5MB size limit (enforced client-side for direct uploads)
 - **Private storage**: Images require presigned URLs for access, enhancing security
 
 ### Image Storage Commands
-- `POST /users/:id/avatar` - Upload user avatar image
-- `GET /users/:id/avatar/presigned-url` - Get temporary access URL for user avatar
+
+#### Direct Upload Flow (Recommended)
+- `POST /users/:id/avatar/upload-url` - Generate presigned URL for direct upload to Azure (expires in 15 minutes)
+- `POST /users/:id/avatar/confirm` - Confirm upload completion and update database with new image URL
+
+#### Traditional Upload Flow
+- `POST /users/:id/avatar` - Upload user avatar image through backend
+
+#### Access Flow
+- `GET /users/:id/avatar/presigned-url` - Get temporary access URL for user avatar (expires in 1 hour)
 
 ### Environment Variables Required
 ```bash
