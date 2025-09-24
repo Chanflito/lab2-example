@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Body,
+  Req,
   UseInterceptors,
   UploadedFile,
   HttpStatus,
@@ -23,6 +24,7 @@ import { UploadAvatarDto, UploadAvatarResponseDto } from './dto/upload-avatar.dt
 import { PresignedUrlResponseDto } from './dto/presigned-url.dto';
 import { UploadUrlResponseDto } from './dto/upload-url.dto';
 import { ConfirmUploadDto, ConfirmUploadResponseDto } from './dto/confirm-upload.dto';
+import { ValidateUserExists } from './decorators/validate-user-exists.decorator';
 
 @ApiTags('User Storage')
 @Controller('users')
@@ -30,6 +32,7 @@ export class UserStorageController {
   constructor(private readonly userStorageService: UserStorageService) {}
 
   @Post(':id/avatar')
+  @ValidateUserExists()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary: 'Upload user avatar',
@@ -62,8 +65,10 @@ export class UserStorageController {
   async uploadAvatar(
     @Param('id', ParseUUIDPipe) userId: string,
     @UploadedFile() file: any,
+    @Req() request: any,
   ): Promise<UploadAvatarResponseDto> {
-    const imageUrl = await this.userStorageService.uploadUserAvatar(userId, file);
+    const user = request.user;
+    const imageUrl = await this.userStorageService.uploadUserAvatar(userId, file, user);
 
     return {
       imageUrl,
@@ -72,6 +77,7 @@ export class UserStorageController {
   }
 
   @Post(':id/avatar/upload-url')
+  @ValidateUserExists()
   @ApiOperation({
     summary: 'Generate presigned URL for direct upload',
     description: 'Generate a temporary presigned URL that allows direct upload to Azure Blob Storage. The URL expires after 15 minutes.',
@@ -97,8 +103,10 @@ export class UserStorageController {
   })
   async generateUploadUrl(
     @Param('id', ParseUUIDPipe) userId: string,
+    @Req() request: any,
   ): Promise<UploadUrlResponseDto> {
-    const { uploadUrl, fileName } = await this.userStorageService.generateUploadPresignedUrl(userId);
+    const user = request.user;
+    const { uploadUrl, fileName } = await this.userStorageService.generateUploadPresignedUrl(userId, user);
 
     // Calculate expiration time (15 minutes from now)
     const expiresAt = new Date(Date.now() + 900 * 1000).toISOString();
@@ -117,6 +125,7 @@ export class UserStorageController {
   }
 
   @Post(':id/avatar/confirm')
+  @ValidateUserExists()
   @ApiOperation({
     summary: 'Confirm avatar upload',
     description: 'Confirm that the avatar has been uploaded successfully and update the user\'s imageUrl in the database.',
@@ -146,8 +155,10 @@ export class UserStorageController {
   async confirmUpload(
     @Param('id', ParseUUIDPipe) userId: string,
     @Body() confirmUploadDto: ConfirmUploadDto,
+    @Req() request: any,
   ): Promise<ConfirmUploadResponseDto> {
-    const imageUrl = await this.userStorageService.confirmUpload(userId, confirmUploadDto.fileName);
+    const user = request.user;
+    const imageUrl = await this.userStorageService.confirmUpload(userId, confirmUploadDto.fileName, user);
 
     return {
       imageUrl,
@@ -156,6 +167,7 @@ export class UserStorageController {
   }
 
   @Get(':id/avatar/presigned-url')
+  @ValidateUserExists()
   @ApiOperation({
     summary: 'Get presigned URL for user avatar',
     description: 'Generate a temporary presigned URL to access the user\'s avatar image. The URL expires after 1 hour.',
@@ -181,8 +193,10 @@ export class UserStorageController {
   })
   async getPresignedUrl(
     @Param('id', ParseUUIDPipe) userId: string,
+    @Req() request: any,
   ): Promise<PresignedUrlResponseDto> {
-    const presignedUrl = await this.userStorageService.getPresignedUrl(userId);
+    const user = request.user;
+    const presignedUrl = await this.userStorageService.getPresignedUrl(userId, user);
 
     // Calculate expiration time (1 hour from now)
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();

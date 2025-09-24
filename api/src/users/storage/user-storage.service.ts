@@ -30,7 +30,7 @@ export class UserStorageService {
     );
   }
 
-  async uploadUserAvatar(userId: string, file: any): Promise<string> {
+  async uploadUserAvatar(userId: string, file: any, user: { id: string; imageUrl: string | null }): Promise<string> {
     // Validate file type
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedMimeTypes.includes(file.mimetype)) {
@@ -41,16 +41,6 @@ export class UserStorageService {
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       throw new BadRequestException('File size too large. Maximum size is 5MB.');
-    }
-
-    // Check if user exists and get current imageUrl
-    const user = await this.prismaService.user.findUnique({
-      where: { id: userId },
-      select: { id: true, imageUrl: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
     }
 
     // Delete previous avatar if exists
@@ -117,17 +107,7 @@ export class UserStorageService {
     }
   }
 
-  async generateUploadPresignedUrl(userId: string): Promise<{ uploadUrl: string; fileName: string }> {
-    // Check if user exists
-    const user = await this.prismaService.user.findUnique({
-      where: { id: userId },
-      select: { id: true, imageUrl: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
+  async generateUploadPresignedUrl(userId: string, _user: { id: string; imageUrl: string | null }): Promise<{ uploadUrl: string; fileName: string }> {
     // Generate unique filename
     const fileName = `avatars/${userId}-${randomUUID()}.jpg`;
 
@@ -152,16 +132,7 @@ export class UserStorageService {
     }
   }
 
-  async confirmUpload(userId: string, fileName: string): Promise<string> {
-    // Check if user exists
-    const user = await this.prismaService.user.findUnique({
-      where: { id: userId },
-      select: { id: true, imageUrl: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+  async confirmUpload(userId: string, fileName: string, user: { id: string; imageUrl: string | null }): Promise<string> {
 
     try {
       // Verify the blob exists
@@ -193,17 +164,7 @@ export class UserStorageService {
     }
   }
 
-  async getPresignedUrl(userId: string): Promise<string> {
-    // Get user and their current image URL
-    const user = await this.prismaService.user.findUnique({
-      where: { id: userId },
-      select: { imageUrl: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
+  async getPresignedUrl(userId: string, user: { id: string; imageUrl: string | null }): Promise<string> {
     if (!user.imageUrl) {
       throw new NotFoundException('User has no avatar image');
     }
