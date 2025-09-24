@@ -32,13 +32,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **NestJS**: TypeScript framework for building scalable server-side applications
 - **Prisma**: Database ORM with PostgreSQL as the database
 - **Docker**: Containerized development environment with PostgreSQL service
+- **Azure Blob Storage**: Cloud storage service for user-uploaded images and files
 
 ### Project Structure
 - `src/` - Main application source code
   - `prisma/` - Prisma service and module for database access
+  - `users/storage/` - User image storage module with Azure Blob Storage integration
   - `app.module.ts` - Root application module
   - `main.ts` - Application entry point (runs on port 3000)
-- `prisma/` - Database schema and migrations
+- `prisma/` - Database schema, migrations, and seed data
 - `test/` - End-to-end test files
 - `generated/prisma/` - Auto-generated Prisma client (gitignored)
 
@@ -66,4 +68,28 @@ The `start:prod` script handles the full production startup sequence:
 3. Run database seeding
 4. Start the application
 
-Note: The application currently has a basic Post model with id, title, content, published status, and creation timestamp.
+## Image Storage System
+
+### Azure Blob Storage Integration
+The application includes a comprehensive image storage system using Azure Blob Storage for user avatars:
+
+- **UserStorageModule**: Scalable module for image upload and management
+- **Automatic image replacement**: New uploads automatically replace previous user images
+- **Presigned URLs**: Secure temporary URLs for private image access (1-hour expiration)
+- **File validation**: Supports JPEG, PNG, WebP with 5MB size limit
+- **Private storage**: Images require presigned URLs for access, enhancing security
+
+### Image Storage Commands
+- `POST /users/:id/avatar` - Upload user avatar image
+- `GET /users/:id/avatar/presigned-url` - Get temporary access URL for user avatar
+
+### Environment Variables Required
+```bash
+AZURE_STORAGE_ACCOUNT_NAME=your_storage_account_name
+AZURE_STORAGE_ACCOUNT_KEY=your_storage_account_key
+AZURE_STORAGE_CONTAINER_NAME=your_container_name
+```
+
+### Data Models
+- **User**: Contains `imageUrl` field for storing Azure Blob Storage URLs
+- **Post**: Basic blog post model with title, content, published status, and author relationship
